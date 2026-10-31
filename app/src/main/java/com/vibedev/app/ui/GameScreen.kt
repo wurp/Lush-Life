@@ -6,6 +6,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vibedev.app.life.Edges
 import com.vibedev.app.life.Library
 import com.vibedev.app.life.Rule
 import kotlin.math.roundToInt
@@ -81,12 +84,12 @@ fun GameScreen(controller: LifeController) {
                 if (showControls) {
                     ControlPanel(
                         controller,
-                        onFit = { viewport.fit(controller.world.width, controller.world.height) },
+                        onFit = { viewport.fit(controller.world) },
                         onOpen = { sheet = it },
                         onHide = { showControls = false },
                     )
                 } else {
-                    RoundButton("☰", onClick = { showControls = true }, modifier = Modifier.align(Alignment.End))
+                    RoundButton("☰", null, onClick = { showControls = true }, modifier = Modifier.align(Alignment.End))
                 }
             }
         }
@@ -99,6 +102,8 @@ fun GameScreen(controller: LifeController) {
                 confirmButton = { TextButton(onClick = { showInfo = false }) { Text("OK") } },
             )
         }
+
+        if (controller.sizeWarning) SizeWarningDialog(controller)
 
         sheet?.let { current ->
             ChooserSheet(current, controller, onClose = { sheet = null })
@@ -184,21 +189,29 @@ private fun ControlPanel(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                RoundButton("↺", onClick = controller::restart)
-                RoundButton("⏭", onClick = { controller.running = false; controller.step() })
-                FilledIconButton(
-                    onClick = { controller.running = !controller.running },
-                    modifier = Modifier.size(60.dp),
-                ) { Text(if (controller.running) "❚❚" else "▶", fontSize = 24.sp) }
-                RoundButton(if (controller.drawMode) "✎" else "✋", selected = controller.drawMode, onClick = { controller.drawMode = !controller.drawMode })
-                RoundButton("⤢", onClick = onFit)
+                RoundButton("↺", "Restart", onClick = controller::restart)
+                RoundButton("+1", "Step", onClick = { controller.running = false; controller.step() })
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FilledIconButton(
+                        onClick = { controller.running = !controller.running },
+                        modifier = Modifier.size(60.dp),
+                    ) { Text(if (controller.running) "❚❚" else "▶", fontSize = 24.sp) }
+                    Caption(if (controller.running) "Pause" else "Play")
+                }
+                RoundButton(
+                    if (controller.drawMode) "✎" else "✋",
+                    if (controller.drawMode) "Draw" else "Move",
+                    selected = controller.drawMode,
+                    onClick = { controller.drawMode = !controller.drawMode },
+                )
+                RoundButton("⤢", "Fit", onClick = onFit)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (controller.drawMode) "Draw" else "Move",
+                    "Speed",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.width(44.dp),
+                    modifier = Modifier.width(48.dp),
                 )
                 Slider(
                     value = controller.speed.toFloat(),
@@ -225,10 +238,29 @@ private fun ControlPanel(
 }
 
 @Composable
-private fun RoundButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
+private fun Caption(text: String) {
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f))
+}
+
+@Composable
+private fun RoundButton(
+    label: String,
+    caption: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    selected: Boolean = false,
+) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        RoundButtonCore(label, onClick, selected)
+        caption?.let { Caption(it) }
+    }
+}
+
+@Composable
+private fun RoundButtonCore(label: String, onClick: () -> Unit, selected: Boolean) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(48.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), CircleShape),
+        modifier = Modifier.size(48.dp).clip(CircleShape).border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), CircleShape),
         colors = IconButtonDefaults.iconButtonColors(
             containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
             contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary,
@@ -303,7 +335,6 @@ private fun PatternList(controller: LifeController, onClose: () -> Unit) {
             items(patterns, key = { it.name }) { p ->
                 ListRow(p.name, p.description.substringBefore("\n"), p == controller.pattern, onClick = {
                     controller.load(p)
-                    controller.running = true
                     onClose()
                 })
             }
@@ -355,21 +386,38 @@ private fun RuleList(controller: LifeController, onClose: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsPanel(controller: LifeController) {
     Column(Modifier.padding(bottom = 32.dp)) {
         SheetTitle("Settings")
         SwitchRow("Fading trails", "Dead cells leave a glowing trail", controller.trails, controller::changeTrails)
         SwitchRow("Grid lines", "Shown when zoomed in", controller.gridLines, controller::changeGridLines)
-        SwitchRow("Wrap edges", "Things leaving one side come back on the other", controller.wrap, controller::changeWrap)
+        Text(
+            "Edges",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
+        )
+        FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Edges.entries.forEach { e ->
+                FilterChip(selected = e == controller.edges, onClick = { controller.changeEdges(e) }, label = { Text(e.label) })
+            }
+        }
+        Text(
+            controller.edges.description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
         HorizontalDivider(Modifier.padding(vertical = 8.dp, horizontal = 20.dp))
         Text(
-            "World size (restarts the pattern)",
+            "Starting world size (restarts the pattern)",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
         )
-        Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             WorldSize.entries.forEach { s ->
                 FilterChip(
                     selected = s == controller.worldSize,
@@ -396,4 +444,26 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onChang
         }
         Switch(checked = checked, onCheckedChange = onChange)
     }
+}
+
+@Composable
+private fun SizeWarningDialog(controller: LifeController) {
+    val world = controller.world
+    AlertDialog(
+        onDismissRequest = controller::stopSimulating,
+        title = { Text("The world is getting very large") },
+        text = {
+            Column {
+                Text(
+                    "It's now ${world.width} × ${world.height} cells and still growing, so it may start to slow down. What would you like to do?",
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                TextButton(onClick = controller::useHardEdges) { Text("Hard edges here: things drop off") }
+                TextButton(onClick = controller::useWrap) { Text("Wrap around at this size") }
+                TextButton(onClick = controller::keepGrowing) { Text("Keep growing") }
+                TextButton(onClick = controller::stopSimulating) { Text("Stop simulating") }
+            }
+        },
+        confirmButton = {},
+    )
 }

@@ -6,9 +6,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
+import com.vibedev.app.life.LifeWorld
 import kotlin.math.floor
 
-/** Where the world sits on screen: [scale] pixels per cell, world corner at [offset]. */
+/** Where the endless plane sits on screen: [scale] pixels per cell, plane position (0, 0) at [offset]. */
 class Viewport {
     var scale by mutableFloatStateOf(1f)
         private set
@@ -17,11 +18,15 @@ class Viewport {
     var size = IntSize.Zero
     private var fitScale = 1f
 
-    fun fit(worldWidth: Int, worldHeight: Int) {
+    /** Zooms so the whole world fills the screen. */
+    fun fit(world: LifeWorld) {
         if (size.width == 0 || size.height == 0) return
-        fitScale = minOf(size.width / worldWidth.toFloat(), size.height / worldHeight.toFloat())
+        fitScale = minOf(size.width / world.width.toFloat(), size.height / world.height.toFloat())
         scale = fitScale
-        offset = Offset((size.width - worldWidth * scale) / 2f, (size.height - worldHeight * scale) / 2f)
+        offset = Offset(
+            (size.width - world.width * scale) / 2f - world.originX * scale,
+            (size.height - world.height * scale) / 2f - world.originY * scale,
+        )
     }
 
     fun pan(by: Offset) { offset += by }

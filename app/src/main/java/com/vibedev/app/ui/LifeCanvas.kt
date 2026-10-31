@@ -27,7 +27,7 @@ fun LifeCanvas(controller: LifeController, viewport: Viewport, modifier: Modifie
     val renderer = remember { WorldRenderer() }
 
     LaunchedEffect(controller.worldVersion) {
-        viewport.fit(controller.world.width, controller.world.height)
+        viewport.fit(controller.world)
     }
 
     Canvas(
@@ -35,7 +35,7 @@ fun LifeCanvas(controller: LifeController, viewport: Viewport, modifier: Modifie
             .onSizeChanged {
                 val first = viewport.size == IntSize.Zero
                 viewport.size = it
-                if (first) viewport.fit(controller.world.width, controller.world.height)
+                if (first) viewport.fit(controller.world)
             }
             .pointerInput(controller, viewport) { handleTouches(controller, viewport) },
     ) {
@@ -45,7 +45,8 @@ fun LifeCanvas(controller: LifeController, viewport: Viewport, modifier: Modifie
         drawRect(theme.background)
         val image = renderer.render(world, theme, controller.trails)
         val scale = viewport.scale
-        val origin = viewport.offset
+        // Screen position of this grid's top-left cell.
+        val origin = viewport.offset + Offset(world.originX * scale, world.originY * scale)
         drawImage(
             image,
             dstOffset = IntOffset(origin.x.roundToInt(), origin.y.roundToInt()),
@@ -86,7 +87,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.handleTo
     var multiTouch = false
     var lastCell = viewport.cellX(down.position) to viewport.cellY(down.position)
     val paintValue: Boolean? = if (controller.drawMode) {
-        (!controller.world.isAlive(lastCell.first, lastCell.second)).also {
+        (!controller.isAliveAt(lastCell.first, lastCell.second)).also {
             controller.setCell(lastCell.first, lastCell.second, it)
         }
     } else null
@@ -116,7 +117,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.handleTo
 
     if (paintValue == null && !multiTouch && moved <= slop) {
         val (x, y) = lastCell
-        controller.setCell(x, y, !controller.world.isAlive(x, y))
+        controller.setCell(x, y, !controller.isAliveAt(x, y))
     }
 }
 

@@ -24,9 +24,9 @@ class Settings(context: Context) {
     var gridLines: Boolean
         get() = prefs.getBoolean("grid", true)
         set(v) = prefs.edit().putBoolean("grid", v).apply()
-    var wrap: Boolean
-        get() = prefs.getBoolean("wrap", true)
-        set(v) = prefs.edit().putBoolean("wrap", v).apply()
+    var edges: String?
+        get() = prefs.getString("edges", null)
+        set(v) = prefs.edit().putString("edges", v).apply()
     var worldSize: Int
         get() = prefs.getInt("worldSize", 1)
         set(v) = prefs.edit().putInt("worldSize", v).apply()

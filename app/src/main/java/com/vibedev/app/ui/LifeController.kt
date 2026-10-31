@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.vibedev.app.life.Edges
 import com.vibedev.app.life.LifeWorld
 import com.vibedev.app.life.Library
 import com.vibedev.app.life.Rule
@@ -31,7 +32,7 @@ class LifeController(private val settings: Settings) {
 
     var pattern by mutableStateOf(Library.byName(settings.pattern))
         private set
-    var running by mutableStateOf(true)
+    var running by mutableStateOf(false)
     var drawMode by mutableStateOf(false)
 
     var theme by mutableStateOf(LifeThemes.byName(settings.theme))
@@ -44,8 +45,13 @@ class LifeController(private val settings: Settings) {
         private set
     var gridLines by mutableStateOf(settings.gridLines)
         private set
-    var wrap by mutableStateOf(settings.wrap)
+    var edges by mutableStateOf(Edges.entries.firstOrNull { it.name == settings.edges } ?: Edges.WRAP)
         private set
+
+    /** True when an infinite world has grown past [sizeLimit] and the author should decide what to do. */
+    var sizeWarning by mutableStateOf(false)
+        private set
+    private var sizeLimit = START_SIZE_LIMIT
     var worldSize by mutableStateOf(WorldSize.entries.getOrElse(settings.worldSize) { WorldSize.MEDIUM })
         private set
 
@@ -56,10 +62,13 @@ class LifeController(private val settings: Settings) {
     fun load(p: StartPattern) {
         pattern = p
         settings.pattern = p.name
+        running = false
+        sizeWarning = false
+        sizeLimit = START_SIZE_LIMIT
         val w = maxOf(worldSize.width, p.minWidth)
         val h = maxOf(worldSize.height, p.minHeight)
         world = LifeWorld(w, h).also {
-            it.wrap = wrap
+            it.edges = edges
             p.seed(it, random)
         }
         worldVersion++
@@ -74,33 +83,57 @@ class LifeController(private val settings: Settings) {
         changed()
     }
 
-    fun step() {
-        world.step(rule, TRAIL_FADE)
-        changed()
-    }
+    fun step() = stepMany(1)
 
     fun stepMany(count: Int) {
-        repeat(count) { world.step(rule, TRAIL_FADE) }
+        for (i in 0 until count) {
+            if (!advance()) break
+        }
         changed()
     }
 
+    /** One generation. Returns false if the world got too big and needs the author's decision first. */
+    private fun advance(): Boolean {
+        val roomy = world.withRoom()
+        if (roomy !== world) {
+            world = roomy
+            if (roomy.width.toLong() * roomy.height > sizeLimit) {
+                running = false
+                sizeWarning = true
+                return false
+            }
+        }
+        world.step(rule, TRAIL_FADE)
+        return true
+    }
+
+    /** [x], [y] are positions in the endless plane, as the screen sees them. */
+    fun isAliveAt(x: Int, y: Int) = world.isAlive(x - world.originX, y - world.originY)
+
     fun setCell(x: Int, y: Int, alive: Boolean) {
-        if (world.isAlive(x, y) == alive) return
-        world.set(x, y, alive)
+        if (isAliveAt(x, y) == alive) return
+        world.set(x - world.originX, y - world.originY, alive)
         changed()
     }
+
+    // Answers to the "world is getting very large" question.
+    fun useHardEdges() { changeEdges(Edges.HARD); sizeWarning = false; running = true }
+    fun useWrap() { changeEdges(Edges.WRAP); sizeWarning = false; running = true }
+    fun keepGrowing() { sizeLimit *= 4; sizeWarning = false; running = true }
+    fun stopSimulating() { sizeWarning = false; running = false }
 
     fun chooseTheme(t: LifeTheme) { theme = t; settings.theme = t.name; changed() }
     fun chooseRule(r: Rule) { rule = r; settings.rule = r.code }
     fun changeSpeed(s: Int) { speed = s; settings.speed = s }
     fun changeTrails(on: Boolean) { trails = on; settings.trails = on; changed() }
     fun changeGridLines(on: Boolean) { gridLines = on; settings.gridLines = on }
-    fun changeWrap(on: Boolean) { wrap = on; settings.wrap = on; world.wrap = on }
+    fun changeEdges(e: Edges) { edges = e; settings.edges = e.name; world.edges = e }
     fun changeWorldSize(s: WorldSize) { worldSize = s; settings.worldSize = s.ordinal; restart() }
 
     private fun changed() { frame++ }
 
     private companion object {
         const val TRAIL_FADE = 6
+        const val START_SIZE_LIMIT = 1_000_000L
     }
 }

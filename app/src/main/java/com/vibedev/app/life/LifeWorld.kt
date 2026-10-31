@@ -9,7 +9,14 @@ class LifeWorld(val width: Int, val height: Int) {
     private var scratch = ByteArray(width * height)
     val trail = ByteArray(width * height)
 
-    var wrap = true
+    var edges = Edges.WRAP
+    private val wrap get() = edges == Edges.WRAP
+
+    /** Position of this grid's top-left cell in the endless plane. Changes when an infinite world grows left or up. */
+    var originX = 0
+        private set
+    var originY = 0
+        private set
     var generation = 0L
         private set
     var population = 0
@@ -98,7 +105,47 @@ class LifeWorld(val width: Int, val height: Int) {
     private fun fade(b: Byte, by: Int): Byte = maxOf(0, (b.toInt() and 0xFF) - by).toByte()
 
 
+    /**
+     * In infinite mode, returns a bigger copy of this world when something is close
+     * enough to an edge that it could cross it next step. Otherwise returns this world.
+     */
+    fun withRoom(): LifeWorld {
+        if (edges != Edges.INFINITE || population == 0) return this
+        val left = if (columnHasLife(0) || columnHasLife(1)) GROW else 0
+        val right = if (columnHasLife(width - 1) || columnHasLife(width - 2)) GROW else 0
+        val top = if (rowHasLife(0) || rowHasLife(1)) GROW else 0
+        val bottom = if (rowHasLife(height - 1) || rowHasLife(height - 2)) GROW else 0
+        if (left + right + top + bottom == 0) return this
+
+        val bigger = LifeWorld(width + left + right, height + top + bottom)
+        bigger.edges = edges
+        bigger.originX = originX - left
+        bigger.originY = originY - top
+        for (y in 0 until height) {
+            val to = (y + top) * bigger.width + left
+            System.arraycopy(ages, y * width, bigger.ages, to, width)
+            System.arraycopy(trail, y * width, bigger.trail, to, width)
+        }
+        bigger.population = population
+        bigger.generation = generation
+        return bigger
+    }
+
+    private fun rowHasLife(y: Int): Boolean {
+        val start = y * width
+        for (i in start until start + width) if (ages[i].toInt() != 0) return true
+        return false
+    }
+
+    private fun columnHasLife(x: Int): Boolean {
+        for (y in 0 until height) if (ages[y * width + x].toInt() != 0) return true
+        return false
+    }
+
     private companion object {
+        /** How many cells an infinite world grows by on each side that needs room. */
+        const val GROW = 32
+
         // Large negative so (row + OUTSIDE) is always < 0 and reads as dead.
         const val OUTSIDE = -1_000_000_000
     }
