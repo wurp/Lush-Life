@@ -54,7 +54,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vibedev.app.life.Edges
-import com.vibedev.app.life.Library
 import com.vibedev.app.life.Rule
 import kotlin.math.roundToInt
 
@@ -139,8 +138,9 @@ private fun RunLoop(controller: LifeController) {
                 last = now
                 val n = due.toInt()
                 if (n > 0) {
-                    due -= n
-                    controller.stepMany(minOf(n, 10))
+                    due -= controller.stepMany(minOf(n, 10), budgetNanos = 20_000_000L)
+                    // If the world is too big to keep up, run as fast as possible instead of piling up work.
+                    if (due > 10) due = 0.0
                 }
             }
         }
@@ -320,7 +320,7 @@ private fun ListRow(title: String, subtitle: String, selected: Boolean, onClick:
 
 @Composable
 private fun PatternList(controller: LifeController, onClose: () -> Unit) {
-    val groups = Library.all.groupBy { it.category }
+    val groups = controller.library.all.groupBy { it.category }
     LazyColumn(Modifier.padding(bottom = 24.dp)) {
         item { SheetTitle("Start patterns") }
         groups.forEach { (category, patterns) ->

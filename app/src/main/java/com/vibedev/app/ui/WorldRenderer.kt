@@ -28,11 +28,16 @@ class WorldRenderer {
             val age = world.ageAt(i)
             pixels[i] = when {
                 age != 0 -> ages[age]
-                trails -> trailColors[world.trailAt(i)]
+                trails -> trailColors[world.trailAt(i, TRAIL_FADE)]
                 else -> bg
             }
         }
         bmp.setPixels(pixels, 0, w, 0, 0, w, h)
         return image!!
+    }
+
+    private companion object {
+        /** How much a trail fades each generation (out of 255). */
+        const val TRAIL_FADE = 6
     }
 }

@@ -9,6 +9,7 @@ enum class Category(val title: String) {
     OSCILLATORS("Oscillators"),
     GUNS("Guns"),
     COMPUTER("Computer parts (Turing complete)"),
+    MACHINES("Machines that compute"),
 }
 
 /** Anything that can fill a fresh world. New kinds of start conditions just implement this. */
@@ -24,20 +25,28 @@ interface StartPattern {
     fun seed(world: LifeWorld, random: Random)
 }
 
-/** A fixed shape, drawn in the middle of the world. */
+/** A fixed shape, drawn in the middle of the world. The shape is only built when first needed. */
 class ShapePattern(
     override val name: String,
     override val category: Category,
     override val description: String,
-    private val shape: Shape,
-    margin: Int = 24,
+    private val margin: Int = 24,
+    makeShape: () -> Shape,
 ) : StartPattern {
+    constructor(name: String, category: Category, description: String, shape: Shape, margin: Int = 24) :
+        this(name, category, description, margin, { shape })
     constructor(name: String, category: Category, description: String, rle: String, margin: Int = 24) :
-        this(name, category, description, Rle.parse(rle), margin)
+        this(name, category, description, margin, { Rle.parse(rle) })
 
-    override val minWidth = shape.width + margin * 2
-    override val minHeight = shape.height + margin * 2
+    private val shape by lazy(makeShape)
+    override val minWidth get() = shape.width + margin * 2
+    override val minHeight get() = shape.height + margin * 2
     override fun seed(world: LifeWorld, random: Random) = world.placeCentered(shape)
+}
+
+/** Reads bundled pattern files. Lets the library stay independent of Android. */
+fun interface PatternFiles {
+    fun read(path: String): String
 }
 
 class RandomSoup(
@@ -99,7 +108,7 @@ object Library {
 
     private const val GATE_TIP = "\n\nA glider is a 1, a gap is a 0. Tip: switch to Draw and erase a glider from an input stream to send a 0, then watch the output change."
 
-    val all: List<StartPattern> = listOf(
+    val builtIn: List<StartPattern> = listOf(
         RandomSoup("Symmetric bloom", "A four-way mirrored random seed. Grows into kaleidoscope patterns.", 0.38f, 0.5f, true),
         RandomSoup("Random soup", "A random scattering of live cells that settles into a busy ecosystem.", 0.3f, 0.8f, false),
         RandomSoup("Sparse dust", "A thin random sprinkle. Watch tiny islands of life appear.", 0.12f, 0.95f, false),
@@ -126,6 +135,43 @@ object Library {
         ShapePattern("NOT gate", Category.COMPUTER, "The top-left gun sends a coded message. Where it crosses the other gun's stream, gliders destroy each other in pairs, so the output (heading down-left) carries the opposite bits.$GATE_TIP", Rle.parse(Circuits.NOT_GATE)),
         ShapePattern("AND gate", Category.COMPUTER, "Two coded input streams flow down-right. A third gun cancels every 1 of the upper input, then hits the lower one. Only when both inputs are 1 does a glider survive to the output.$GATE_TIP", Rle.parse(Circuits.AND_GATE)),
         ShapePattern("OR gate", Category.COMPUTER, "Two coded inputs and two helper guns. A glider reaches the output (the bottom stream) when either input is 1. NOT, AND and OR together are enough to build any computer, which is why Life is Turing complete.$GATE_TIP", Rle.parse(Circuits.OR_GATE)),
+    )
+
+}
+
+/** Every start pattern: the built-in ones plus big machines loaded from bundled files. */
+class PatternLibrary(private val files: PatternFiles) {
+    private fun machine(name: String, description: String, file: String) =
+        ShapePattern(name, Category.MACHINES, description, margin = 60) { Rle.parse(files.read("patterns/$file")) }
+
+    val all: List<StartPattern> = Library.builtIn + listOf(
+        machine(
+            "Turing machine",
+            "Paul Rendell's Turing machine (2000), a real programmable computer built from Life: a 3-state, 3-symbol machine " +
+                "with a tape, a read/write head and a table of rules, all made of glider streams. Each machine step takes " +
+                "thousands of generations, so turn the speed up and be patient. Big: 1714 × 1647 cells.",
+            "turing-machine.rle",
+        ),
+        machine(
+            "Primer (prime numbers)",
+            "Four versions of Dean Hickerson's prime sieve (1991, plus 2005 variants by Jason Summers). Each one fires a " +
+                "stream of spaceships; gaps are knocked out at every multiple, so only primes get through. " +
+                "Best with Infinite or Hard edges.",
+            "four-primers.rle",
+        ),
+        machine(
+            "Twin primes",
+            "Dean Hickerson (1994). A spaceship escapes past the gun only when 6n−1 and 6n+1 are both prime. " +
+                "Best with Infinite or Hard edges.",
+            "twin-primes.rle",
+        ),
+        machine(
+            "Fermat primes",
+            "Tests every number 2ⁿ+1 for primality. The row of small tubs stands for the known Fermat primes; a tub is " +
+                "destroyed each time one is found. If an unknown Fermat prime exists, the whole thing self-destructs. " +
+                "Nobody knows if it does, which makes this pattern an unsolved maths problem. Best with Infinite edges.",
+            "fermat-primes.rle",
+        ),
     )
 
     val default: StartPattern get() = all.first()

@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.vibedev.app.life.Edges
 import com.vibedev.app.life.LifeWorld
-import com.vibedev.app.life.Library
+import com.vibedev.app.life.PatternLibrary
 import com.vibedev.app.life.Rule
 import com.vibedev.app.life.StartPattern
 import kotlin.random.Random
@@ -20,7 +20,7 @@ enum class WorldSize(val label: String, val width: Int, val height: Int) {
 }
 
 /** Holds the game state the screen shows, and the actions the screen can take. */
-class LifeController(private val settings: Settings) {
+class LifeController(private val settings: Settings, val library: PatternLibrary) {
     var world by mutableStateOf(LifeWorld(1, 1))
         private set
     /** Bumped whenever cells change, so the canvas knows to redraw. */
@@ -30,7 +30,7 @@ class LifeController(private val settings: Settings) {
     var worldVersion by mutableIntStateOf(0)
         private set
 
-    var pattern by mutableStateOf(Library.byName(settings.pattern))
+    var pattern by mutableStateOf(library.byName(settings.pattern))
         private set
     var running by mutableStateOf(false)
     var drawMode by mutableStateOf(false)
@@ -64,9 +64,9 @@ class LifeController(private val settings: Settings) {
         settings.pattern = p.name
         running = false
         sizeWarning = false
-        sizeLimit = START_SIZE_LIMIT
         val w = maxOf(worldSize.width, p.minWidth)
         val h = maxOf(worldSize.height, p.minHeight)
+        sizeLimit = maxOf(START_SIZE_LIMIT, w.toLong() * h * 2)
         world = LifeWorld(w, h).also {
             it.edges = edges
             p.seed(it, random)
@@ -85,11 +85,16 @@ class LifeController(private val settings: Settings) {
 
     fun step() = stepMany(1)
 
-    fun stepMany(count: Int) {
-        for (i in 0 until count) {
-            if (!advance()) break
+    /** Runs up to [count] generations, stopping early once [budgetNanos] has passed. Returns how many ran. */
+    fun stepMany(count: Int, budgetNanos: Long = Long.MAX_VALUE): Int {
+        val start = System.nanoTime()
+        var done = 0
+        while (done < count && advance()) {
+            done++
+            if (System.nanoTime() - start > budgetNanos) break
         }
         changed()
+        return done
     }
 
     /** One generation. Returns false if the world got too big and needs the author's decision first. */
@@ -103,7 +108,7 @@ class LifeController(private val settings: Settings) {
                 return false
             }
         }
-        world.step(rule, TRAIL_FADE)
+        world.step(rule)
         return true
     }
 
@@ -133,7 +138,6 @@ class LifeController(private val settings: Settings) {
     private fun changed() { frame++ }
 
     private companion object {
-        const val TRAIL_FADE = 6
         const val START_SIZE_LIMIT = 1_000_000L
     }
 }
